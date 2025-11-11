@@ -9,20 +9,20 @@
         <Copyright>Copyright ©  2021</Copyright>
         <TestProjectType>UnitTest</TestProjectType>
         <OutputPath>bin\$(Configuration)\</OutputPath>
-        <Product>QuantConnect.Brokerages.Template.Tests</Product>
-        <AssemblyName>QuantConnect.Brokerages.Template.Tests</AssemblyName>
-        <RootNamespace>QuantConnect.Brokerages.Template.Tests</RootNamespace>
-        <AssemblyTitle>QuantConnect.Brokerages.Template.Tests</AssemblyTitle>
+        <Product>QuantConnect.Brokerages.Saxo.Tests</Product>
+        <AssemblyName>QuantConnect.Brokerages.Saxo.Tests</AssemblyName>
+        <RootNamespace>QuantConnect.Brokerages.Saxo.Tests</RootNamespace>
+        <AssemblyTitle>QuantConnect.Brokerages.Saxo.Tests</AssemblyTitle>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
-        <PackageReference Include="NUnit" Version="4.2.2" />
-        <PackageReference Include="NUnit3TestAdapter" Version="4.6.0">
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+        <PackageReference Include="NUnit" Version="4.4.0" />
+        <PackageReference Include="NUnit3TestAdapter" Version="5.2.0">
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.9.4" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
     </ItemGroup>
 
     <ItemGroup>
@@ -30,8 +30,8 @@
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\..\Lean\Tests\QuantConnect.Tests.csproj" />
-      <ProjectReference Include="..\QuantConnect.TemplateBrokerage.ToolBox\QuantConnect.TemplateBrokerage.ToolBox.csproj" />
-      <ProjectReference Include="..\QuantConnect.TemplateBrokerage\QuantConnect.TemplateBrokerage.csproj" />
+      <ProjectReference Include="..\QuantConnect.SaxoBrokerage.ToolBox\QuantConnect.SaxoBrokerage.ToolBox.csproj" />
+      <ProjectReference Include="..\QuantConnect.SaxoBrokerage\QuantConnect.SaxoBrokerage.csproj" />
     </ItemGroup>
 
     <ItemGroup>

@@ -37,7 +37,7 @@ namespace QuantConnect.Brokerages.Template.ToolBox
             var targetAppName = targetApp.ToString();
             if (targetAppName.Contains("download") || targetAppName.Contains("dl"))
             {
-                var downloader = new TemplateBrokerageDownloader();
+                var downloader = new SaxoBrokerageDownloader();
             }
             else if (targetAppName.Contains("updater") || targetAppName.EndsWith("spu"))
             {

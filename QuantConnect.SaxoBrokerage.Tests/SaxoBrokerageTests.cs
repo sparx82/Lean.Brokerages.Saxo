@@ -24,7 +24,7 @@ using QuantConnect.Tests.Brokerages;
 namespace QuantConnect.Brokerages.Template.Tests
 {
     [TestFixture, Ignore("Not implemented")]
-    public partial class TemplateBrokerageTests : BrokerageTests
+    public partial class SaxoBrokerageTests : BrokerageTests
     {
         protected override Symbol Symbol { get; }
         protected override SecurityType SecurityType { get; }

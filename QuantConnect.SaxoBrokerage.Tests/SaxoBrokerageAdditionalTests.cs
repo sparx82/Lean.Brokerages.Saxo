@@ -20,12 +20,12 @@ using QuantConnect.Interfaces;
 namespace QuantConnect.Brokerages.Template.Tests
 {
     [TestFixture]
-    public class TemplateBrokerageAdditionalTests
+    public class SaxoBrokerageAdditionalTests
     {
         [Test]
         public void ParameterlessConstructorComposerUsage()
         {
-            var brokerage = Composer.Instance.GetExportedValueByTypeName<IDataQueueHandler>("TemplateBrokerage");
+            var brokerage = Composer.Instance.GetExportedValueByTypeName<IDataQueueHandler>("SaxoBrokerage");
             Assert.IsNotNull(brokerage);
         }
     }

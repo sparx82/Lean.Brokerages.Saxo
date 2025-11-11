@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "QuantConnect.SaxoBrokerage": {
+      "commandName": "Project"
+    },
+    "QuantConnect LeanLauncher": {
+      "commandName": "Executable",
+      "executablePath": "C:\\AlgoTrading\\Quantconnect\\Lean\\Launcher\\bin\\Debug\\QuantConnect.Lean.Launcher.exe",
+      "workingDirectory": "C:\\AlgoTrading\\Quantconnect\\Lean\\Launcher\\bin\\Debug"
+    }
+  }
+}

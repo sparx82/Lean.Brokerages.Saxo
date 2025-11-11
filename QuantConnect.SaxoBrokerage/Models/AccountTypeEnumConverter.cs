@@ -13,25 +13,28 @@
  * limitations under the License.
 */
 
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+using QuantConnect.Brokerages.Saxo.Models.Enums;
 using System;
-using QuantConnect.Data;
-using System.Collections.Generic;
 
-namespace QuantConnect.Brokerages.Template.ToolBox
+namespace QuantConnect.Brokerages.Saxo.Models
 {
     /// <summary>
-    /// Template Brokerage Data Downloader implementation
+    /// Account type enum json converter which handles unknown values
     /// </summary>
-    public class TemplateBrokerageDownloader : IDataDownloader
+    public class AccountTypeEnumConverter : StringEnumConverter
     {
-        /// <summary>
-        /// Get historical data enumerable for a single symbol, type and resolution given this start and end time (in UTC).
-        /// </summary>
-        /// <param name="dataDownloaderGetParameters">model class for passing in parameters for historical data</param>
-        /// <returns>Enumerable of base data for this symbol</returns>
-        public IEnumerable<BaseData> Get(DataDownloaderGetParameters dataDownloaderGetParameters)
+        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            throw new NotImplementedException();
+            try
+            {
+                return base.ReadJson(reader, objectType, existingValue, serializer);
+            }
+            catch
+            {
+                return SaxoAccountType.Unknown;
+            }
         }
     }
 }

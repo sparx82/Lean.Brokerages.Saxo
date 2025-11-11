@@ -13,20 +13,22 @@
  * limitations under the License.
 */
 
-using NUnit.Framework;
-using QuantConnect.Interfaces;
-using QuantConnect.Util;
 
-namespace QuantConnect.Brokerages.Template.Tests
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+using System.Runtime.Serialization;
+
+namespace QuantConnect.Brokerages.Saxo.Models.Enums;
+
+[JsonConverter(typeof(StringEnumConverter))]
+public enum SaxoOptionType
 {
-    [TestFixture, Ignore("This test requires a configured TemplateBrokerageFactory")]
-    public class TemplateBrokerageFactoryTests
-    {
-        [Test]
-        public void InitializesFactoryFromComposer()
-        {
-            using var factory = Composer.Instance.Single<IBrokerageFactory>(instance => instance.BrokerageType == typeof(TemplateBrokerage));
-            Assert.IsNotNull(factory);
-        }
-    }
+    [EnumMember(Value = "Call")]
+    Call = 0,
+
+    [EnumMember(Value = "Put")]
+    Put = 1,
+
+    [EnumMember(Value = "NA")]
+    Na = 2
 }

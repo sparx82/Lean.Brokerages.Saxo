@@ -20,8 +20,8 @@ See the [brokerage development guide](https://www.quantconnect.com/tutorials/ope
 6. 🍴📦Fork QuantConnect brokerage repository.
 7. Rename all template to new brokerage names by a skeleton.
     - for instance:
-        - `TemplateBrokerage.cs` -> `BinanceBrokerage.cs`
-        - `public class TemplateBrokerage` -> `public class InteractiveBrokersBrokerage`
+        - `SaxoBrokerage.cs` -> `BinanceBrokerage.cs`
+        - `public class SaxoBrokerage` -> `public class InteractiveBrokersBrokerage`
 8. Remove: not used parts (for instance: downloader lean has generic now, but some brokerages support downloading trading pairs process like some crypto exchanges) - [Lean download data provider source](https://github.com/QuantConnect/Lean/tree/master/DownloaderDataProvider), [Bybit Exchange Info Downloader](https://github.com/QuantConnect/Lean.Brokerages.ByBit/blob/master/QuantConnect.BybitBrokerage.ToolBox/BybitExchangeInfoDownloader.cs)
 9. Implement API connection (simple request) infrastructure (generic method that send GET/POST requests) 
 10. If brokerage support several steps of authentication like **OAuth 2** - [TradeStation example](https://github.com/QuantConnect/Lean.Brokerages.TradeStation/blob/master/QuantConnect.TradeStationBrokerage/Api/TokenRefreshHandler.cs)

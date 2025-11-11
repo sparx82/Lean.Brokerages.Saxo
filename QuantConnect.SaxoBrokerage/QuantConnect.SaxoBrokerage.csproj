@@ -1,18 +1,18 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <TargetFramework>net9.0</TargetFramework>
-    <Product>QuantConnect.Brokerages.Template</Product>
-    <AssemblyName>QuantConnect.Brokerages.Template</AssemblyName>
-    <RootNamespace>QuantConnect.Brokerages.Template</RootNamespace>
-    <AssemblyTitle>QuantConnect.Brokerages.Template</AssemblyTitle>
+    <Product>QuantConnect.Brokerages.Saxo</Product>
+    <AssemblyName>QuantConnect.Brokerages.Saxo</AssemblyName>
+    <RootNamespace>QuantConnect.Brokerages.Saxo</RootNamespace>
+    <AssemblyTitle>QuantConnect.Brokerages.Saxo</AssemblyTitle>
     <OutputType>Library</OutputType>
     <OutputPath>bin\$(Configuration)\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <Description>QuantConnect LEAN Template Brokerage: Brokerage Template plugin for Lean</Description>
+    <Description>QuantConnect LEAN Saxo Brokerage</Description>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugType>full</DebugType>
@@ -26,7 +26,11 @@
     <Compile Include="..\..\Lean\Common\Properties\SharedAssemblyInfo.cs" Link="Properties\SharedAssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
+    <PackageReference Include="Duende.IdentityModel.OidcClient" Version="6.0.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="QuantConnect.Brokerages" Version="2.5.*" />
   </ItemGroup>
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="copy /Y &quot;$(TargetDir)$(TargetName).dll&quot; &quot;$(TargetDir)..\..\..\..\Lean\Launcher\bin\Debug\$(TargetName).dll&quot;&#xD;&#xA;copy /Y &quot;$(TargetDir)$(TargetName).pdb&quot; &quot;$(TargetDir)..\..\..\..\Lean\Launcher\bin\Debug\$(TargetName).pdb&quot;" />
+  </Target>
 </Project>
