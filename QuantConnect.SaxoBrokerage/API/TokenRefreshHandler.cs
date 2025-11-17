@@ -42,6 +42,11 @@ public class TokenRefreshHandler : DelegatingHandler
         _refreshToken = refreshToken;
     }
 
+    public TokenRefreshHandler(HttpMessageHandler innerHandler, string accessToken) : base(innerHandler)
+    {
+        _saxoAccessToken = new SaxoAccessToken(accessToken, "", "", "", 0, "Bearer", "");
+    }
+
     protected async override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         HttpResponseMessage response = null;
@@ -156,44 +161,4 @@ public class TokenRefreshHandler : DelegatingHandler
             }
         }
     }
-
-    public static async Task<string> GetRequestAsPlainTextAsync(HttpRequestMessage request)
-    {
-        var sb = new StringBuilder();
-
-        // 1. Append the Request Line
-        sb.AppendLine($"{request.Method} {request.RequestUri} HTTP/{request.Version}");
-
-        // 2. Append Request Headers
-        foreach (var header in request.Headers)
-        {
-            // User-Agent, etc.
-            sb.AppendLine($"{header.Key}: {string.Join(", ", header.Value)}");
-        }
-
-        // 3. Append Content Headers (if content exists)
-        if (request.Content != null)
-        {
-            foreach (var header in request.Content.Headers)
-            {
-                // Content-Type, Content-Length, etc.
-                sb.AppendLine($"{header.Key}: {string.Join(", ", header.Value)}");
-            }
-
-            // Add a blank line to separate headers from body
-            sb.AppendLine();
-
-            // 4. Append the Body
-            //    We MUST buffer the content first. This allows us to read it
-            //    and "rewind" the stream so HttpClient can read it again.
-            await request.Content.LoadIntoBufferAsync();
-
-            // Now we can safely read the content as a string.
-            string body = await request.Content.ReadAsStringAsync();
-            sb.AppendLine(body);
-        }
-
-        return sb.ToString();
-    }
-
 }

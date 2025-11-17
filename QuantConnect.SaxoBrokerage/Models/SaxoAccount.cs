@@ -1,4 +1,5 @@
-﻿using System;
+﻿using QuantConnect.Brokerages.Saxo.Models.Enums;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,32 +10,73 @@ namespace QuantConnect.Brokerages.Saxo.Models;
 
 public readonly struct SaxoAccount
 {
-    public List<Account> Accounts { get; }
-
-    [JsonConstructor]
-    public SaxoAccount(List<Account> accounts)
-    {
-        Accounts = accounts;
-    }
-}
-
-public readonly struct Account
-{
-    public string AccountID { get; }
-    public string AccountKey { get; }
-    public bool Active { get; }
-    public string ClientID { get; }
+    public float AccountValueProtectionLimit { get; }
+    public string[] AllowedNettingProfiles { get; }
+    public string AllowedTradingSessions { get; }
+    public string ClientId { get; }
     public string ClientKey { get; }
-    public string Currency { get; }
+
+    public string ClientType { get; }
+    public string CollateralMonitoringMode { get; }
+    public string ContractOptionsTradingProfile { get; }
+    public string ContractType { get; }
+    public int CurrencyDecimals { get; }
+    public string DefaultAccountId { get; }
+    public string DefaultAccountKey { get; }
+    public string DefaultCurrency { get; }
+    public bool ForceOpenDefaultValue { get; }
+    public bool IsMarginTradingAllowed { get; }
+    public bool IsVariationMarginEligible { get; }
+    public SaxoAssetType[] LegalAssetTypes { get; }
+    public bool LegalAssetTypesAreIndicative { get; }
+    public string MarginCalculationMethod { get; }
+    public string MarginMonitoringMode { get; }
+    public string MutualFundsCashAmountOrderCurrency { get; }
+    public string Name { get; }
+    public string PartnerPlatformID { get; }
+    public string PositionNettingMethod { get; }
+    public string PositionNettingMode { get; }
+    public string PositionNettingProfile { get; }
+    public string ReduceExposureOnly { get; }
+    public string SecurityLendingEnabled { get; }
+    public string SupportsAccountValueProtectionLimit { get; }
 
     [JsonConstructor]
-    public Account(string accountID, string accountKey, bool active, string clientID, string clientKey, string currency)
+    public SaxoAccount(float accountValueProtectionLimit, string[] allowedNettingProfiles, string allowedTradingSessions, string clientId,
+        string clientKey, string clientType, string collateralMonitoringMode, string contractOptionsTradingProfile, string contractType, int currencyDecimals,
+        string defaultAccountId, string defaultAccountKey, string defaultCurrency, bool forceOpenDefaultValue, bool isMarginTradingAllowed,
+        bool isVariationMarginEligible, SaxoAssetType[] legalAssetTypes, bool legalAssetTypesAreIndicative, string marginCalculationMethod,
+        string marginMonitoringMode, string mutualFundsCashAmountOrderCurrency, string name, string positionNettingMethod, string partnerPlatformID,
+        string positionNettingMode, string positionNettingProfile, string reduceExposureOnly, string securityLendingEnabled, string supportsAccountValueProtectionLimit)
     {
-        AccountID = accountID;
-        AccountKey = accountKey;
-        Active = active;
-        ClientID = clientID;
+        AccountValueProtectionLimit = accountValueProtectionLimit;
+        AllowedNettingProfiles = allowedNettingProfiles;
+        AllowedTradingSessions = allowedTradingSessions;
+        ClientId = clientId;
         ClientKey = clientKey;
-        Currency = currency;
+        ClientType = clientType;
+        CollateralMonitoringMode = collateralMonitoringMode;
+        ContractOptionsTradingProfile = contractOptionsTradingProfile;
+        ContractType = contractType;
+        CurrencyDecimals = currencyDecimals;
+        DefaultAccountId = defaultAccountId;
+        DefaultAccountKey = defaultAccountKey;
+        DefaultCurrency = defaultCurrency;
+        ForceOpenDefaultValue = forceOpenDefaultValue;
+        IsMarginTradingAllowed = isMarginTradingAllowed;
+        IsVariationMarginEligible = isVariationMarginEligible;
+        LegalAssetTypes = legalAssetTypes;
+        LegalAssetTypesAreIndicative = legalAssetTypesAreIndicative;
+        MarginCalculationMethod = marginCalculationMethod;
+        MarginMonitoringMode = marginMonitoringMode;
+        MutualFundsCashAmountOrderCurrency = mutualFundsCashAmountOrderCurrency;
+        Name = name;
+        PartnerPlatformID = partnerPlatformID;
+        PositionNettingMethod = positionNettingMethod;
+        PositionNettingMode = positionNettingMode;
+        PositionNettingProfile = positionNettingProfile;
+        ReduceExposureOnly = reduceExposureOnly;
+        SecurityLendingEnabled = securityLendingEnabled;
+        SupportsAccountValueProtectionLimit = supportsAccountValueProtectionLimit;
     }
 }

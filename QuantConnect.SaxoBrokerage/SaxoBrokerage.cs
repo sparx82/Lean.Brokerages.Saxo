@@ -13,8 +13,10 @@
  * limitations under the License.
 */
 
+using NodaTime;
 using QuantConnect.Brokerages.Saxo.API;
 using QuantConnect.Data;
+using QuantConnect.Data.Fundamental;
 using QuantConnect.Interfaces;
 using QuantConnect.Orders;
 using QuantConnect.Packets;
@@ -25,13 +27,16 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Security.Cryptography;
+//using static QuantConnect.Messages;
 
 namespace QuantConnect.Brokerages.Saxo;
 
 [BrokerageFactory(typeof(SaxoBrokerageFactory))]
-public class SaxoBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler, IDataQueueUniverseProvider
+public partial class SaxoBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler, IDataQueueUniverseProvider
 {
     private SaxoAPIClient _saxoAPIClient;
+
+    private SaxoSymbolMapper _symbolMapper;
 
 
     private readonly IDataAggregator _aggregator;
@@ -79,7 +84,7 @@ public class SaxoBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler, IDataQu
         }
         _saxoAPIClient = new SaxoAPIClient(clientId, restApiUrl, redirectUrl);
 
-        _isInitialized = true;
+        _isInitialized = true;        
     }
 
     protected override void OnMessage(object sender, WebSocketMessage e)
@@ -304,7 +309,7 @@ public class SaxoBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler, IDataQu
             return false;
         }
 
-        throw new NotImplementedException();
+        return _symbolMapper.SupportedSecurityType.Contains(symbol.SecurityType);
     }
 
     /// <summary>
@@ -313,22 +318,6 @@ public class SaxoBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler, IDataQu
     /// <param name="symbols">The symbols to be removed keyed by SecurityType</param>
     private bool Unsubscribe(IEnumerable<Symbol> symbols)
     {
-        throw new NotImplementedException();
-    }
-
-    /// <summary>
-    /// Gets the history for the requested symbols
-    /// <see cref="IBrokerage.GetHistory(Data.HistoryRequest)"/>
-    /// </summary>
-    /// <param name="request">The historical data request</param>
-    /// <returns>An enumerable of bars covering the span specified in the request</returns>
-    public override IEnumerable<BaseData> GetHistory(Data.HistoryRequest request)
-    {
-        if (!CanSubscribe(request.Symbol))
-        {
-            return null; // Should consistently return null instead of an empty enumerable
-        }
-
         throw new NotImplementedException();
     }
 }
