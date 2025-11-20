@@ -17,7 +17,7 @@ using NUnit.Framework;
 using QuantConnect.Util;
 using QuantConnect.Interfaces;
 
-namespace QuantConnect.Brokerages.Template.Tests
+namespace QuantConnect.Brokerages.Saxo.Tests
 {
     [TestFixture]
     public class SaxoBrokerageAdditionalTests

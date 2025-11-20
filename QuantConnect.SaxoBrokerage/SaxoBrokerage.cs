@@ -13,12 +13,18 @@
  * limitations under the License.
 */
 
+using Newtonsoft.Json.Linq;
 using NodaTime;
+using QuantConnect.Benchmarks;
+using QuantConnect.Brokerages.LevelOneOrderBook;
 using QuantConnect.Brokerages.Saxo.API;
+using QuantConnect.Configuration;
 using QuantConnect.Data;
 using QuantConnect.Data.Fundamental;
 using QuantConnect.Interfaces;
+using QuantConnect.Logging;
 using QuantConnect.Orders;
+using QuantConnect.Orders.Fees;
 using QuantConnect.Packets;
 using QuantConnect.Securities;
 using QuantConnect.Util;
@@ -26,20 +32,20 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Linq;
 using System.Security.Cryptography;
+using System.Threading;
 //using static QuantConnect.Messages;
 
 namespace QuantConnect.Brokerages.Saxo;
 
 [BrokerageFactory(typeof(SaxoBrokerageFactory))]
-public partial class SaxoBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler, IDataQueueUniverseProvider
+public partial class SaxoBrokerage : Brokerage
 {
     private SaxoAPIClient _saxoAPIClient;
 
     private SaxoSymbolMapper _symbolMapper;
 
-
-    private readonly IDataAggregator _aggregator;
     private readonly EventBasedDataQueueHandlerSubscriptionManager _subscriptionManager;
 
     private bool _isInitialized = false;
@@ -49,6 +55,29 @@ public partial class SaxoBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
     /// Returns true if we're currently connected to the broker
     /// </summary>
     public override bool IsConnected { get => _isConneted; }
+
+    /// <summary>
+    /// Represents a type capable of fetching the holdings for the specified symbol
+    /// </summary>
+    protected ISecurityProvider SecurityProvider { get; private set; }
+
+    /// <summary>
+    /// Order provider
+    /// </summary>
+    protected IOrderProvider OrderProvider { get; private set; }
+
+    /// <summary>
+    /// Brokerage helper class to lock message stream while executing an action, for example placing an order
+    /// </summary>
+    private BrokerageConcurrentMessageHandler<string> _messageHandler;
+
+    /// <summary>
+    /// Containing the available trading routes.
+    /// </summary>
+    /// <remarks>
+    /// The routes are only loaded when accessed for the first time, ensuring efficient resource usage.
+    /// </remarks>
+    private Lazy<Dictionary<SecurityType, ReadOnlyCollection<Route>>> _routes;
 
     /// <summary>
     /// Parameterless constructor for brokerage
@@ -71,73 +100,53 @@ public partial class SaxoBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
         _subscriptionManager.UnsubscribeImpl += (s, t) => Unsubscribe(s);
     }
 
-    public SaxoBrokerage(string clientId, string apiUrl, string redirectUrl) : base("SaxoBrokerage")
+    public SaxoBrokerage(string clientId, string apiUrl, string redirectUrl) :this (clientId, apiUrl, redirectUrl, null, null)
     {
-        Initialize(clientId, apiUrl, redirectUrl);
     }
 
-    protected void Initialize(string clientId, string restApiUrl, string redirectUrl)
+    public SaxoBrokerage(string clientId, string apiUrl, string redirectUrl, IOrderProvider orderProvider, ISecurityProvider securityProvider) : base("SaxoBrokerage")
+    {
+        Initialize(clientId, apiUrl, redirectUrl, orderProvider, securityProvider);
+    }
+
+    protected void Initialize(string clientId, string restApiUrl, string redirectUrl, IOrderProvider orderProvider, ISecurityProvider securityProvider)
     {
         if (_isInitialized)
         {
             return;
         }
         _saxoAPIClient = new SaxoAPIClient(clientId, restApiUrl, redirectUrl);
+        _symbolMapper = new SaxoSymbolMapper(_saxoAPIClient);
 
-        _isInitialized = true;        
-    }
+        SecurityProvider = securityProvider;
+        OrderProvider = orderProvider;
 
-    protected override void OnMessage(object sender, WebSocketMessage e)
-    {
-        throw new NotImplementedException();
-    }
+        _isInitialized = true;
 
-    protected override bool Subscribe(IEnumerable<Symbol> symbols)
-    {
-        throw new NotImplementedException();
-    }
+        _messageHandler = new(HandleSaxoMessage);
 
-    #region IDataQueueHandler
-
-    /// <summary>
-    /// Subscribe to the specified configuration
-    /// </summary>
-    /// <param name="dataConfig">defines the parameters to subscribe to a data feed</param>
-    /// <param name="newDataAvailableHandler">handler to be fired on new data available</param>
-    /// <returns>The new enumerator for this subscription request</returns>
-    public IEnumerator<BaseData> Subscribe(SubscriptionDataConfig dataConfig, EventHandler newDataAvailableHandler)
-    {
-        if (!CanSubscribe(dataConfig.Symbol))
+        _aggregator = Composer.Instance.GetPart<IDataAggregator>();
+        if (_aggregator == null)
         {
-            return null;
+            // toolbox downloader case
+            var aggregatorName = Config.Get("data-aggregator", "QuantConnect.Lean.Engine.DataFeeds.AggregationManager");
+            Log.Trace($"{nameof(SaxoBrokerage)}.{nameof(Initialize)}: found no data aggregator instance, creating {aggregatorName}");
+            _aggregator = Composer.Instance.GetExportedValueByTypeName<IDataAggregator>(aggregatorName);
         }
 
-        var enumerator = _aggregator.Add(dataConfig, newDataAvailableHandler);
-        _subscriptionManager.Subscribe(dataConfig);
+        _levelOneServiceManager = new LevelOneServiceManager(
+            _aggregator,
+            (symbols, _) => Subscribe(symbols),
+            (symbols, _) => Unsubscribe(symbols));
 
-        return enumerator;
+        _routes = new Lazy<Dictionary<SecurityType, ReadOnlyCollection<Route>>>(() =>
+        {
+            return _saxoAPIClient.GetRoutes().SynchronouslyAwaitTaskResult().Routes
+            .SelectMany(route => route.AssetTypes.Select(assetType => new { SecurityType = assetType.ConvertAssetTypeToSecurityType(), Route = route }))
+            .GroupBy(x => x.SecurityType)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Route).ToList().AsReadOnly());
+        });
     }
-
-    /// <summary>
-    /// Removes the specified configuration
-    /// </summary>
-    /// <param name="dataConfig">Subscription config to be removed</param>
-    public void Unsubscribe(SubscriptionDataConfig dataConfig)
-    {
-        _subscriptionManager.Unsubscribe(dataConfig);
-        _aggregator.Remove(dataConfig);
-    }
-
-    /// <summary>
-    /// Sets the job we're subscribing for
-    /// </summary>
-    /// <param name="job">Job we're subscribing for</param>
-    public void SetJob(LiveNodePacket job)
-    {
-        throw new NotImplementedException();
-    }
-
-    #endregion
 
     #region Brokerage
 
@@ -312,12 +321,222 @@ public partial class SaxoBrokerage : BaseWebsocketsBrokerage, IDataQueueHandler,
         return _symbolMapper.SupportedSecurityType.Contains(symbol.SecurityType);
     }
 
-    /// <summary>
-    /// Removes the specified symbols to the subscription
-    /// </summary>
-    /// <param name="symbols">The symbols to be removed keyed by SecurityType</param>
-    private bool Unsubscribe(IEnumerable<Symbol> symbols)
+    internal void HandleSaxoMessage(string json)
     {
-        throw new NotImplementedException();
+        return;
+
+        /*if (OrderProvider == null)
+        {
+            // we are used as a data source only, not a brokerage
+            return;
+        }
+
+        try
+        {
+            var jObj = JObject.Parse(json);
+            if (_isSubscribeOnStreamOrderUpdate && jObj["AccountID"] != null)
+            {
+                if (Log.DebuggingEnabled)
+                {
+                    Log.Debug($"{nameof(TradeStationBrokerage)}.{nameof(HandleTradeStationMessage)}.WebSocket.JSON: {json}");
+                }
+
+                var brokerageOrder = jObj.ToObject<TradeStationOrder>();
+
+                var globalLeanOrderStatus = default(OrderStatus);
+                var eventMessage = string.Empty;
+                switch (brokerageOrder.Status)
+                {
+                    case TradeStationOrderStatusType.Ack:
+                        // Remove the order entry when the order is acknowledged (indicating successful submission)
+                        _updateSubmittedResponseResultByBrokerageID.TryRemove(new(brokerageOrder.OrderID, true));
+                        return;
+                    // Sometimes, a filled event is received without the ClosedDateTime property set.
+                    // Subsequently, another event is received with the ClosedDateTime property correctly populated.
+                    case TradeStationOrderStatusType.Fll:
+                    case TradeStationOrderStatusType.Brf:
+                        globalLeanOrderStatus = OrderStatus.Filled;
+                        break;
+                    case TradeStationOrderStatusType.Fpr:
+                        globalLeanOrderStatus = OrderStatus.PartiallyFilled;
+                        break;
+                    case TradeStationOrderStatusType.Rej:
+                    case TradeStationOrderStatusType.Tsc:
+                    case TradeStationOrderStatusType.Rjr:
+                    case TradeStationOrderStatusType.Bro:
+                        globalLeanOrderStatus = OrderStatus.Invalid;
+                        break;
+                    case TradeStationOrderStatusType.Exp:
+                        eventMessage = "Expired";
+                        globalLeanOrderStatus = OrderStatus.Canceled;
+                        break;
+                    // Sometimes, a Out event is received without the ClosedDateTime property set.
+                    // Subsequently, another event is received with the ClosedDateTime property correctly populated.
+                    case TradeStationOrderStatusType.Out when brokerageOrder.ClosedDateTime != default:
+                        // Remove the order entry if it was marked as submitted but is now out
+                        // Sometimes, the order receives an "Out" status on every even occurrence
+                        if (_updateSubmittedResponseResultByBrokerageID.TryRemove(new(brokerageOrder.OrderID, true)))
+                        {
+                            return;
+                        }
+                        globalLeanOrderStatus = OrderStatus.Canceled;
+                        break;
+                    default:
+                        Log.Debug($"{nameof(TradeStationBrokerage)}.{nameof(HandleTradeStationMessage)}.TradeStationStreamStatus: {json}");
+                        return;
+                }
+                ;
+
+                var leanOrders = new List<Order>();
+                if (!TryGetOrRemoveCrossZeroOrder(brokerageOrder.OrderID, globalLeanOrderStatus, out var crossZeroLeanOrder))
+                {
+                    leanOrders = OrderProvider.GetOrdersByBrokerageId(brokerageOrder.OrderID);
+                }
+                else
+                {
+                    leanOrders.Add(crossZeroLeanOrder);
+                }
+
+                if (leanOrders == null || leanOrders.Count == 0)
+                {
+                    Log.Error($"{nameof(TradeStationBrokerage)}.{nameof(HandleTradeStationMessage)}. order id not found: {brokerageOrder.OrderID}");
+                    return;
+                }
+
+                var sendFeesOnce = default(bool);
+                foreach (var leg in brokerageOrder.Legs.DistinctBy(x => x.Symbol))
+                {
+                    var legOrderStatus = globalLeanOrderStatus;
+                    // Manually update the order status to 'Filled' because one of the combo order legs is fully filled.
+                    // This prevents excessive event generation in Lean by avoiding repeated 'PartiallyFilled' updates.
+                    if (legOrderStatus != OrderStatus.Filled && legOrderStatus == OrderStatus.PartiallyFilled && leg.QuantityRemaining == 0)
+                    {
+                        legOrderStatus = OrderStatus.Filled;
+                    }
+
+                    Order leanOrder;
+                    if (leanOrders.Count == 1)
+                    {
+                        // If there is only one order, use it directly
+                        leanOrder = leanOrders[0];
+                    }
+                    else
+                    {
+                        // If there are multiple orders, find the one that matches the leg's symbol
+                        if (!_symbolMapper.TryGetLeanSymbol(leg.Symbol, leg.AssetType, leg.ExpirationDate, out var leanSymbol))
+                        {
+                            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, $"{nameof(TradeStationBrokerage)}.{nameof(HandleTradeStationMessage)}: " +
+                                $"Failed to map a Lean Symbol using the following details:: {leg} "));
+                            return;
+                        }
+
+                        // Ensure there is an order with the specific symbol in leanOrders.
+                        leanOrder = leanOrders.FirstOrDefault(order => order.Symbol == leanSymbol);
+
+                        if (leanOrder == null)
+                        {
+                            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Error, -1, $"Error in {nameof(TradeStationBrokerage)}.{nameof(HandleTradeStationMessage)}: " +
+                                $"Could not find order with symbol '{leanSymbol}' in leanOrders. " +
+                                $"Brokerage Order ID: {brokerageOrder.OrderID}. Leg details - {leg}" +
+                                $"Please verify that the order was correctly added to leanOrders."));
+                            return;
+                        }
+                    }
+
+                    // TradeStation may occasionally send duplicate event messages where the only difference is the order of the legs.
+                    // If the order status is 'Filled', skip processing this message to avoid handling the same event multiple times.
+                    if (leanOrder.Status == OrderStatus.Filled)
+                    {
+                        continue;
+                    }
+
+                    // TradeStation sends the accumulative filled quantity but we need the partial amount for our event
+                    _orderIdToFillQuantity.TryGetValue(leanOrder.Id, out var previousExecutionAmount);
+                    var accumulativeFilledQuantity = _orderIdToFillQuantity[leanOrder.Id] = leg.BuyOrSell.IsShort() ? decimal.Negate(leg.ExecQuantity) : leg.ExecQuantity;
+
+                    if (globalLeanOrderStatus.IsClosed())
+                    {
+                        _orderIdToFillQuantity.TryRemove(leanOrder.Id, out _);
+                    }
+
+                    var orderEvent = new OrderEvent(
+                        leanOrder,
+                        DateTime.UtcNow,
+                        OrderFee.Zero,
+                        brokerageOrder.RejectReason)
+                    {
+                        Status = legOrderStatus,
+                        FillPrice = leg.ExecutionPrice,
+                        FillQuantity = accumulativeFilledQuantity - previousExecutionAmount,
+                        Message = eventMessage
+                    };
+
+                    // When updating a combo order with multiple legs, each leg's update is received separately via WebSocket.
+                    // However, it's possible for one leg to be partially filled while another leg is still waiting to be filled.
+                    // In these cases, to avoid generating unnecessary events in Lean (and causing spam),
+                    // we skip processing if the current leg's update does not include any new fill quantity (i.e., the leg has not had any additional quantity filled).
+                    if ((legOrderStatus == OrderStatus.PartiallyFilled || leanOrder.Status == OrderStatus.Filled) && orderEvent.FillQuantity == 0)
+                    {
+                        continue;
+                    }
+
+                    // Fees should only be sent once when the order is fully filled.
+                    // The sendFeesOnce flag ensures that we don't send the OrderFee multiple times,
+                    // especially for ComboOrders with multiple legs where each leg might trigger an update.
+                    if (!sendFeesOnce && globalLeanOrderStatus == OrderStatus.Filled)
+                    {
+                        sendFeesOnce = true;
+                        orderEvent.OrderFee = new OrderFee(new CashAmount(brokerageOrder.CommissionFee, Currencies.USD));
+                    }
+
+                    // if we filled the order and have another contingent order waiting, submit it
+                    if (!TryHandleRemainingCrossZeroOrder(leanOrder, orderEvent))
+                    {
+                        OnOrderEvent(orderEvent);
+                    }
+                }
+
+                // Sometimes, TradeStation returns incorrect responses with a duplicate leg symbol or without the leg being fully executed quantity.
+                // This issue occurs only when dealing with OrderType.ComboMarket or OrderType.ComboLimit Orders.
+                if (globalLeanOrderStatus == OrderStatus.Filled && leanOrders.Any(x => x.GroupOrderManager != null))
+                {
+                    leanOrders = OrderProvider.GetOrdersByBrokerageId(brokerageOrder.OrderID);
+                    foreach (var leanOrder in leanOrders)
+                    {
+                        if (leanOrder.Status != OrderStatus.Filled)
+                        {
+                            // if we don't fill our order from TradeStation's response, we can keep the quantity in collection to calculate the correct holdings.
+                            _orderIdToFillQuantity.TryRemove(leanOrder.Id, out var previousExecutionAmount);
+                            var orderEvent = new OrderEvent(leanOrder, DateTime.UtcNow, OrderFee.Zero, brokerageOrder.RejectReason)
+                            {
+                                Status = OrderStatus.Filled,
+                                FillQuantity = leanOrder.Quantity - previousExecutionAmount
+                            };
+                            OnMessage(new BrokerageMessageEvent(BrokerageMessageType.Warning, -1, $"Detected missing fill event for OrderID: {leanOrder.Id} creating inferred filled event."));
+                            OnOrderEvent(orderEvent);
+                        }
+                    }
+                }
+            }
+            else if (jObj["StreamStatus"] != null)
+            {
+                var status = jObj.ToObject<TradeStationStreamStatus>();
+                switch (status.StreamStatus)
+                {
+                    case "EndSnapshot":
+                        _isSubscribeOnStreamOrderUpdate = true;
+                        _autoResetEvent.Set();
+                        break;
+                    default:
+                        Log.Debug($"{nameof(TradeStationBrokerage)}.{nameof(HandleTradeStationMessage)}.TradeStationStreamStatus: {json}");
+                        break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, $"Raw json: {json}");
+            throw;
+        }*/
     }
 }

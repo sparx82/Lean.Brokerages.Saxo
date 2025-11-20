@@ -13,120 +13,158 @@
  * limitations under the License.
 */
 
-using System;
-using System.Linq;
+using NodaTime;
 using NUnit.Framework;
 using QuantConnect.Data;
-using QuantConnect.Tests;
-using QuantConnect.Logging;
-using QuantConnect.Securities;
 using QuantConnect.Data.Market;
 using QuantConnect.Lean.Engine.HistoricalData;
+using QuantConnect.Logging;
+using QuantConnect.Securities;
+using QuantConnect.Tests;
+using QuantConnect.Util;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
-namespace QuantConnect.Brokerages.Saxo.Tests
+namespace QuantConnect.Brokerages.Saxo.Tests;
+
+[TestFixture]
+public class SaxoBrokerageHistoryProviderTests
 {
-    [TestFixture, Ignore("Not implemented")]
-    public class SaxoBrokerageHistoryProviderTests
+    private SaxoBrokerageTest _brokerage;
+
+    [OneTimeSetUp]
+    public void OneTimeSetUp()
     {
-        private static TestCaseData[] TestParameters
+        Log.Trace("--- OneTimeSetUp: SaxoBrokerageHistoryProviderTests ---");
+        _brokerage = TestSetup.CreateBrokerage(null, null);
+    }
+
+    [OneTimeTearDown]
+    public void OneTimeTearDown()
+    {
+        Log.Trace("--- OneTimeTearDown: SaxoBrokerageHistoryProviderTests ---");
+        _brokerage.Disconnect();
+        _brokerage.DisposeSafely();
+    }
+
+    private static IEnumerable<TestCaseData> ValidHistoryParameters
+    {
+        get
         {
-            get
-            {
-                return new[]
-                {
-                    // valid parameters, example:
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Tick, TimeSpan.FromMinutes(1), TickType.Quote, typeof(Tick), false),
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Minute, TimeSpan.FromMinutes(10), TickType.Quote, typeof(QuoteBar), false),
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Daily, TimeSpan.FromDays(10), TickType.Quote, typeof(QuoteBar), false),
+            var AAPL = CreateSymbol("AAPL:xnas", SecurityType.Equity);
+            /*yield return new TestCaseData(AAPL, Resolution.Minute, new DateTime(2024, 06, 18), new DateTime(2024, 07, 18));
+            yield return new TestCaseData(AAPL, Resolution.Hour, new DateTime(2024, 06, 18), new DateTime(2024, 07, 18));
+            yield return new TestCaseData(AAPL, Resolution.Daily, new DateTime(2024, 06, 18), new DateTime(2024, 07, 18));
+            yield return new TestCaseData(AAPL, Resolution.Minute, new DateTime(2024, 02, 12), new DateTime(2024, 03, 23));
+            yield return new TestCaseData(AAPL, Resolution.Minute, new DateTime(2024, 03, 22), new DateTime(2024, 03, 23));*/
 
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Tick, TimeSpan.FromMinutes(1), TickType.Trade, typeof(Tick), false),
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Minute, TimeSpan.FromMinutes(10), TickType.Trade, typeof(TradeBar), false),
-                    new TestCaseData(Symbols.BTCUSD, Resolution.Daily, TimeSpan.FromDays(10), TickType.Trade, typeof(TradeBar), false),
+            //yield return new TestCaseData(AAPL, Resolution.Minute, new DateTime(2023, 06, 18), new DateTime(2024, 07, 18));
 
-                    // invalid parameter, validate SecurityType more accurate
-                    new TestCaseData(Symbols.SPY, Resolution.Hour, TimeSpan.FromHours(14), TickType.Quote, typeof(QuoteBar), true),
+            // Saxo does not support options historical data
+            var ROGOption = CreateSymbol("ROG:xeur", SecurityType.Option, OptionRight.Call, 310, new DateTime(2026, 01, 16));
+            //yield return new TestCaseData(ROGOption, Resolution.Minute, new DateTime(2025, 11, 06), new DateTime(2024, 11, 15));
+            //yield return new TestCaseData(ROGOption, Resolution.Hour, new DateTime(2024, 11, 06), new DateTime(2024, 12, 06));
+            //yield return new TestCaseData(ROGOption, Resolution.Daily, new DateTime(2024, 11, 06), new DateTime(2024, 12, 06));
+            //yield return new TestCaseData(ROGOption, Resolution.Minute, new DateTime(2023, 11, 06), new DateTime(2024, 12, 06));
 
-                    /// New Listed Symbol on Brokerage <see cref="Slice.SymbolChangedEvents"/>
-                    new TestCaseData(Symbol.Create("SUSHIGBP", SecurityType.Crypto, Market.Coinbase), Resolution.Minute, TimeSpan.FromHours(2), TickType.Trade, typeof(TradeBar), false),
+            var SMIFuture = Symbol.CreateFuture("FSMSZ5", Market.EUREX, new DateTime(2025, 12, 19));
+            yield return new TestCaseData(SMIFuture, Resolution.Minute, new DateTime(2025, 11, 11), new DateTime(2025, 11, 12));
+            /*yield return new TestCaseData(COTTON, Resolution.Hour, new DateTime(2024, 06, 18), new DateTime(2024, 07, 18));
+            yield return new TestCaseData(COTTON, Resolution.Daily, new DateTime(2024, 06, 18), new DateTime(2024, 07, 18));
+            yield return new TestCaseData(COTTON, Resolution.Minute, new DateTime(2023, 06, 18), new DateTime(2024, 07, 18));
+            yield return new TestCaseData(COTTON, Resolution.Minute, new DateTime(2024, 02, 12), new DateTime(2024, 03, 23));
 
-                    /// Symbol was delisted form Brokerage (can return history data or not) <see cref="Slice.Delistings"/>
-                    new TestCaseData(Symbol.Create("SNTUSD", SecurityType.Crypto, Market.Coinbase), Resolution.Daily, TimeSpan.FromDays(14), TickType.Trade, typeof(TradeBar), true),
-                };
-            }
+            var VIX = Symbol.Create("VIX", SecurityType.Index, Market.USA);
+            yield return new TestCaseData(VIX, Resolution.Minute, new DateTime(2024, 06, 18), new DateTime(2024, 07, 18));
+            yield return new TestCaseData(VIX, Resolution.Hour, new DateTime(2024, 06, 18), new DateTime(2024, 07, 18));
+            yield return new TestCaseData(VIX, Resolution.Daily, new DateTime(2024, 06, 18), new DateTime(2024, 07, 18));
+            yield return new TestCaseData(VIX, Resolution.Minute, new DateTime(2023, 06, 18), new DateTime(2024, 07, 18));
+            yield return new TestCaseData(VIX, Resolution.Minute, new DateTime(2024, 02, 12), new DateTime(2024, 03, 23));
+
+            var VIXOption = Symbol.CreateOption(VIX, Market.USA, SecurityType.IndexOption.DefaultOptionStyle(), OptionRight.Call, 17m, new DateTime(2024, 12, 18));
+            yield return new TestCaseData(VIXOption, Resolution.Minute, new DateTime(2024, 11, 06), new DateTime(2024, 12, 06));
+            yield return new TestCaseData(VIXOption, Resolution.Hour, new DateTime(2024, 11, 06), new DateTime(2024, 12, 06));
+            yield return new TestCaseData(VIXOption, Resolution.Daily, new DateTime(2024, 11, 06), new DateTime(2024, 12, 06));
+            yield return new TestCaseData(VIXOption, Resolution.Minute, new DateTime(2023, 11, 06), new DateTime(2024, 12, 06));*/
+        }
+    }
+
+    [TestCaseSource(nameof(ValidHistoryParameters))]
+    public void GetHistoryData(Symbol symbol, Resolution resolution, DateTime startDate, DateTime endDate)
+    {
+        var historyRequest = CreateHistoryRequest(symbol, resolution, TickType.Trade, startDate, endDate);
+
+        var history = _brokerage.GetHistory(historyRequest);
+
+        Assert.IsNotNull(history);
+        Assert.IsNotEmpty(history);
+
+        AssertTradeBars(history.Select(x => x as TradeBar), symbol, resolution.ToTimeSpan());
+    }
+
+    public static void AssertTradeBars(IEnumerable<TradeBar> tradeBars, Symbol symbol, TimeSpan period)
+    {
+        var counterTradeBar = default(int);
+        foreach (var tradeBar in tradeBars)
+        {
+            Assert.That(tradeBar.Symbol, Is.EqualTo(symbol));
+            Assert.That(tradeBar.Period, Is.EqualTo(period));
+            Assert.That(tradeBar.Open, Is.GreaterThan(0));
+            Assert.That(tradeBar.High, Is.GreaterThan(0));
+            Assert.That(tradeBar.Low, Is.GreaterThan(0));
+            Assert.That(tradeBar.Close, Is.GreaterThan(0));
+            Assert.That(tradeBar.Price, Is.GreaterThan(0));
+            Assert.That(tradeBar.Volume, Is.GreaterThanOrEqualTo(0));
+            Assert.That(tradeBar.Time, Is.GreaterThan(default(DateTime)));
+            Assert.That(tradeBar.EndTime, Is.GreaterThan(default(DateTime)));
+            counterTradeBar++;
+        }
+        Log.Trace($"{nameof(AssertTradeBars)}: Successfully validated {counterTradeBar} trade bars for symbol '{symbol}' with period '{period}'.");
+    }
+
+    private static HistoryRequest CreateHistoryRequest(Symbol symbol, Resolution resolution, TickType tickType, DateTime startDateTime, DateTime endDateTime,
+            SecurityExchangeHours exchangeHours = null, DateTimeZone dataTimeZone = null)
+    {
+        if (exchangeHours == null)
+        {
+            exchangeHours = SecurityExchangeHours.AlwaysOpen(TimeZones.NewYork);
         }
 
-        [Test, TestCaseSource(nameof(TestParameters))]
-        public void GetsHistory(Symbol symbol, Resolution resolution, TimeSpan period, TickType tickType, Type dataType, bool throwsException)
+        if (dataTimeZone == null)
         {
-            TestDelegate test = () =>
-            {
-                var brokerage = new SaxoBrokerage(null);
+            dataTimeZone = TimeZones.NewYork;
+        }
 
-                var historyProvider = new BrokerageHistoryProvider();
-                historyProvider.SetBrokerage(brokerage);
-                historyProvider.Initialize(new HistoryProviderInitializeParameters(null, null, null,
-                    null, null, null, null,
-                    false, null, null, null));
-
-                var marketHoursDatabase = MarketHoursDatabase.FromDataFolder();
-                var now = DateTime.UtcNow;
-                var requests = new[]
-                {
-                    new HistoryRequest(now.Add(-period),
-                        now,
-                        dataType,
-                        symbol,
-                        resolution,
-                        marketHoursDatabase.GetExchangeHours(symbol.ID.Market, symbol, symbol.SecurityType),
-                        marketHoursDatabase.GetDataTimeZone(symbol.ID.Market, symbol, symbol.SecurityType),
-                        resolution,
-                        false,
-                        false,
-                        DataNormalizationMode.Adjusted,
-                        tickType)
-                };
-
-                var historyArray = historyProvider.GetHistory(requests, TimeZones.Utc).ToArray();
-                foreach (var slice in historyArray)
-                {
-                    if (resolution == Resolution.Tick)
-                    {
-                        foreach (var tick in slice.Ticks[symbol])
-                        {
-                            Log.Debug($"{tick}");
-                        }
-                    }
-                    else if (slice.QuoteBars.TryGetValue(symbol, out var quoteBar))
-                    {
-                        Log.Debug($"{quoteBar}");
-                    }
-                    else if (slice.Bars.TryGetValue(symbol, out var tradeBar))
-                    {
-                        Log.Debug($"{tradeBar}");
-                    }
-                }
-
-                if (historyProvider.DataPointCount > 0)
-                {
-                    // Ordered by time
-                    Assert.That(historyArray, Is.Ordered.By("Time"));
-
-                    // No repeating bars
-                    var timesArray = historyArray.Select(x => x.Time).ToArray();
-                    Assert.AreEqual(timesArray.Length, timesArray.Distinct().Count());
-                }
-
-                Log.Trace("Data points retrieved: " + historyProvider.DataPointCount);
-            };
-
-            if (throwsException)
-            {
-                Assert.Throws<ArgumentException>(test);
-            }
-            else
-            {
-                Assert.DoesNotThrow(test);
-            }
+        var dataType = LeanData.GetDataType(resolution, tickType);
+        return new HistoryRequest(
+            startDateTime,
+            endDateTime,
+            dataType,
+            symbol,
+            resolution,
+            exchangeHours,
+            dataTimeZone,
+            null,
+            true,
+            false,
+            DataNormalizationMode.Adjusted,
+            tickType
+            );
+    }
+    public static Symbol CreateSymbol(string ticker, SecurityType securityType, OptionRight? optionRight = null, decimal? strikePrice = null, DateTime? expirationDate = null, string market = Market.USA)
+    {
+        switch (securityType)
+        {
+            case SecurityType.Equity:
+                return Symbol.Create(ticker, securityType, market);
+            case SecurityType.Option:
+                var underlyingEquitySymbol = Symbol.Create(ticker, SecurityType.Equity, market);
+                return Symbol.CreateOption(underlyingEquitySymbol, market, OptionStyle.American, optionRight.Value, strikePrice.Value, expirationDate.Value);
+            case SecurityType.Future:
+                return Symbol.CreateFuture(ticker, market, expirationDate.Value);
+            default:
+                throw new NotSupportedException($"The security type '{securityType}' is not supported.");
         }
     }
 }

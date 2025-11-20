@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
+using System.Threading.RateLimiting;
 using System.Threading.Tasks;
 
 namespace QuantConnect.Brokerages.Saxo.API;
@@ -32,6 +33,8 @@ public class TokenRefreshHandler : DelegatingHandler
 
     private string _refreshToken;
 
+    private RateLimiter _limiter;
+
     public TokenRefreshHandler(HttpMessageHandler innerHandler, string clientId, string clientSecret, string authorizationCodeFromUrl, string baseSignInUrl, string redirectUri, string refreshToken) : base(innerHandler)
     {
         _clientId = clientId;
@@ -40,16 +43,53 @@ public class TokenRefreshHandler : DelegatingHandler
         _authorizationCodeFromUrl = authorizationCodeFromUrl;
         _baseSignInUrl = baseSignInUrl;
         _refreshToken = refreshToken;
+
+        _limiter = new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions
+        {
+            // Allow 120 messages per minute
+            PermitLimit = 120,
+            Window = TimeSpan.FromMinutes(1),
+
+            // This is crucial: it tells the limiter to queue excess requests
+            // instead of rejecting them.
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = int.MaxValue // Set a reasonable queue limit
+        });
     }
 
     public TokenRefreshHandler(HttpMessageHandler innerHandler, string accessToken) : base(innerHandler)
     {
         _saxoAccessToken = new SaxoAccessToken(accessToken, "", "", "", 0, "Bearer", "");
+
+        _limiter = new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions
+        {
+            // Allow 120 messages per minute
+            PermitLimit = 120,
+            Window = TimeSpan.FromMinutes(1),
+
+            // This is crucial: it tells the limiter to queue excess requests
+            // instead of rejecting them.
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = int.MaxValue // Set a reasonable queue limit
+        });
     }
 
     protected async override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         HttpResponseMessage response = null;
+
+        // Asynchronously wait for a permit to be available.
+        // This will delay the request if the limit is exceeded,
+        // honoring the queue.
+        using RateLimitLease lease = await _limiter.AcquireAsync(1, cancellationToken);
+
+        // If 'IsAcquired' is false, it means the CancellationToken was signaled
+        // while we were waiting.
+        if (!lease.IsAcquired)
+        {
+            // Throw an exception to indicate cancellation.
+            throw new OperationCanceledException("Request was canceled while waiting for the rate limit.", cancellationToken);
+        }
 
         for (_retryCount = 0; _retryCount < _maxRetryCount; _retryCount++)
         {
@@ -97,6 +137,16 @@ public class TokenRefreshHandler : DelegatingHandler
         }
 
         return response;
+    }
+
+    // Don't forget to dispose the limiter
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _limiter.Dispose();
+        }
+        base.Dispose(disposing);
     }
 
     private async Task<SaxoAccessToken> GetAuthenticationToken(CancellationToken cancellationToken = default)

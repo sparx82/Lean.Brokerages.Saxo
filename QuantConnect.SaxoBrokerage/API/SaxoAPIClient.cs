@@ -1,33 +1,26 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
-using QuantConnect.Brokerages.Saxo.Models;
-using QuantConnect.Brokerages.Saxo.Models.Enums;
-
-//using QuantConnect.Brokerages.Saxo.Models.Enums;
-using QuantConnect.Brokerages.Saxo.Models.Interfaces;
-using QuantConnect.Logging;
-using QuantConnect.Orders;
-using QuantConnect.Util;
-using RestSharp;
-using System;
-using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Diagnostics;
+﻿using System;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using static System.Net.WebRequestMethods;
-using Lean = QuantConnect.Orders;
+using System.Net.Http;
+using Newtonsoft.Json;
 
+using System.Threading;
+using System.Diagnostics;
+using QuantConnect.Util;
+using QuantConnect.Orders;
+using QuantConnect.Logging;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using Lean = QuantConnect.Orders;
+using Newtonsoft.Json.Serialization;
+using System.Runtime.CompilerServices;
+using QuantConnect.Brokerages.Saxo.Models;
+using QuantConnect.Brokerages.Saxo.Models.Enums;
+using QuantConnect.Brokerages.Saxo.Models.Interfaces;
 namespace QuantConnect.Brokerages.Saxo.API;
 
-public class SaxoAPIClient : IDisposable
+public class SaxoAPIClient
 {
     /// <summary>
     /// Represents the API Key used by the client application to authenticate requests.
@@ -41,7 +34,7 @@ public class SaxoAPIClient : IDisposable
     /// </summary>
     private const int MaxBars = 1200;
     
-    private readonly string _clientId;
+    private readonly string _clientId;    
 
     private bool _isConnected;
 
@@ -103,8 +96,6 @@ public class SaxoAPIClient : IDisposable
 
         //var tokenResponse = oauthClient.ExchangeCodeForTokenAsync(_authorizationCode).SynchronouslyAwaitTaskResult();
 
-        SaxoAccount  saxo_account = GetCurrentClientDetails().SynchronouslyAwaitTaskResult();
-
         _isConnected = true;
     }
 
@@ -132,17 +123,28 @@ public class SaxoAPIClient : IDisposable
         return await RequestAsync<SaxoOrderResponse>(_baseUrl, "/port/v1/orders/me?FieldGroups=DisplayAndFormat", HttpMethod.Get);
     }
 
-    public async Task<SaxoInstrumentSearchResponse> SearchInstrumentsAsync(SaxoAssetType saxoAssetType, string keywords)
+    public async Task<SaxoInstrumentSearchResponse> SearchInstrumentsAsync(SaxoAssetType[] saxoAssetType, string keywords)
     {   
-        var resource = $"/ref/v1/instruments?AssetTypes={saxoAssetType}&Keywords={keywords}";
-        var response = await RequestAsync<SaxoInstrumentSearchResponse>(_baseUrl, resource, HttpMethod.Get);
-        return response;
-        //return await RequestAsync<SaxoInstrumentSearchResponse>(_baseUrl, resource, HttpMethod.Get);
+        var resource = $"/ref/v1/instruments?AssetTypes={string.Join(",", saxoAssetType)}&Keywords={keywords}";
+        return await RequestAsync<SaxoInstrumentSearchResponse>(_baseUrl, resource, HttpMethod.Get);
     }
 
-    public async Task<SaxoDetailedInstrumentInformation> GetInstrumentsDetailsAsync(string instrumentId, SaxoAssetType assetType)
+    public async Task<SaxoContractOptionSpaceSearchResponse> SearchOptionRootSpace(int optionRootId)
     {
-        var resource = $"/ref/v1/instruments/details/{instrumentId}/{assetType}";
+        var resource = $"/ref/v1/instruments/contractoptionspaces/{optionRootId}";
+        var response = await RequestAsync<SaxoContractOptionSpaceSearchResponse>(_baseUrl, resource, HttpMethod.Get);
+        return response;
+    }
+
+    public async Task<SaxoRoute> GetRoutes()
+    {
+        throw new NotImplementedException("SaxoAPIClient.GetRoutes not implemented");
+        //return await RequestAsync<TradeStationRoute>(_baseUrl, "/v3/orderexecution/routes", HttpMethod.Get);
+    }
+
+    public async Task<SaxoDetailedInstrumentInformation> GetInstrumentsDetailsAsync(string instrumentId, SaxoAssetType[] assetType)
+    {
+        var resource = $"/ref/v1/instruments/details/{instrumentId}/{string.Join(",", assetType)}";
         return await RequestAsync<SaxoDetailedInstrumentInformation>(_baseUrl, resource, HttpMethod.Get);
     }
 
@@ -198,15 +200,15 @@ public class SaxoAPIClient : IDisposable
         {
             if (ex != null)
             {
-                Console.WriteLine(level.ToString() + ": " + message + " Ex: " + ex.Message);
+                Log.Trace($"Deserializer: {message} Ex: {ex.Message}");
             }
             else
             {
-                Console.WriteLine(level.ToString() + ": " + message);
+                Log.Trace($"Deserializer: {message}");
             }
         }
     }
-    public async IAsyncEnumerable<SaxoChartSample> GetBars(SaxoAssetType assetType, int uic, SaxoUnitTimeIntervalType unitOfTime, DateTime firstDate, DateTime lastDate)
+    public async IAsyncEnumerable<SaxoChartSample> GetBars(SaxoAssetType[] assetType, int uic, SaxoUnitTimeIntervalType unitOfTime, DateTime firstDate, DateTime lastDate)
     {
         var count = MaxBars;
         var totalDateRange = lastDate - firstDate;
@@ -237,7 +239,7 @@ public class SaxoAPIClient : IDisposable
                 newLastDate = lastDate;
             }
 
-            if (totalRequestAmount < 1)
+            if (totalRequestAmount < 1 && totalRequestAmount > 0)
             {
                 count = (int)remainingCount;
             }
@@ -252,7 +254,7 @@ public class SaxoAPIClient : IDisposable
         } while (--totalRequestAmount >= 0);
     }
 
-    private async IAsyncEnumerable<SaxoChartSample> GetBarsAsync(SaxoAssetType assetType, int uic, SaxoUnitTimeIntervalType unitOfTime, DateTime time = new DateTime(), int count = 1200, string mode = "From")
+    private async IAsyncEnumerable<SaxoChartSample> GetBarsAsync(SaxoAssetType[] assetType, int uic, SaxoUnitTimeIntervalType unitOfTime, DateTime time = new DateTime(), int count = 1200, string mode = "From")
     {
         int horizon = 1;
         if (unitOfTime == SaxoUnitTimeIntervalType.Hour)
@@ -264,7 +266,7 @@ public class SaxoAPIClient : IDisposable
             horizon = 1440;
         }
 
-        var url = new StringBuilder($"/chart/v3/charts?AssetType={assetType}&Count={count}&Horizon={horizon}&Mode={mode}&Time={time.ToString("yyyy-MM-ddTH:mm:ss")}&Uic={uic}");
+        var url = new StringBuilder($"/chart/v3/charts?AssetType={string.Join(",", assetType)}&Count={count}&Horizon={horizon}&Mode={mode}&Time={time.ToString("yyyy-MM-ddTHH:mm:ss")}&Uic={uic}");
        
         var bars = default(IEnumerable<SaxoChartSample>);
         try
@@ -280,6 +282,47 @@ public class SaxoAPIClient : IDisposable
         foreach (var bar in bars)
         {
             yield return bar;
+        }
+    }
+
+    public async IAsyncEnumerable<Quote> StreamQuotes(IReadOnlyCollection<string> symbols, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var response in StreamRequestAsyncEnumerable($"{_baseUrl}/v3/marketdata/stream/quotes/{string.Join(",", symbols)}", cancellationToken))
+        {
+            // Skip processing the heartbeat response as it only indicates the stream is alive
+            if (response.Contains("Heartbeat", StringComparison.InvariantCultureIgnoreCase))
+            {
+                continue;
+            }
+            else if (response.Contains("GoAway", StringComparison.InvariantCultureIgnoreCase))
+            {
+                break;
+            }
+            yield return JsonConvert.DeserializeObject<Quote>(response);
+        }
+    }
+
+    private async IAsyncEnumerable<string> StreamRequestAsyncEnumerable(string requestUri, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using (var request = new HttpRequestMessage(HttpMethod.Get, requestUri))
+        {
+            using (var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
+            {
+                response.EnsureSuccessStatusCode();
+
+                using (var stream = await response.Content.ReadAsStreamAsync(cancellationToken))
+                {
+                    using (StreamReader reader = new StreamReader(stream))
+                    {
+                        while (!reader.EndOfStream)
+                        {
+                            var jsonLine = await reader.ReadLineAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+                            if (jsonLine == null || cancellationToken.IsCancellationRequested) break;
+                            yield return jsonLine;
+                        }
+                    }
+                }
+            }
         }
     }
 

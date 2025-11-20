@@ -587,7 +587,7 @@ public struct SaxoDetailedInstrumentInformation
     }
 }
 
-public struct ExchangeSummary
+public readonly struct ExchangeSummary
 {
     public string CountryCode { get; }
     public string ExchangeId { get; }

@@ -13,13 +13,14 @@
  * limitations under the License.
 */
 
-using System;
-using System.Text;
-using QuantConnect.Data;
-using QuantConnect.Logging;
-using QuantConnect.Data.Market;
-using System.Collections.Generic;
 using QuantConnect.Brokerages.Saxo.Models.Enums;
+using QuantConnect.Data;
+using QuantConnect.Data.Market;
+using QuantConnect.Logging;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 
 namespace QuantConnect.Brokerages.Saxo;
 
@@ -69,6 +70,12 @@ public partial class SaxoBrokerage
             return null;
         }
 
+        if(request.Symbol.SecurityType == SecurityType.Option)
+        {
+            Log.Error($"{nameof(SaxoBrokerage)}.{nameof(GetHistory)}: Saxo does not support historical data of '{request.Symbol.SecurityType}'");
+            return null;
+        }
+
         if (request.Resolution < Resolution.Second)
         {
             if (!_unsupportedResolutionTypeWarningFired)
@@ -80,7 +87,9 @@ public partial class SaxoBrokerage
             return null;
         }
 
-        if (request.TickType != TickType.Trade)
+
+        //ToDo: Check whether Saxo distinguishes between different TickTypes
+        /*if (request.TickType != TickType.Trade)
         {
             if (!_unsupportedTickTypeTypeWarningFired)
             {
@@ -89,7 +98,7 @@ public partial class SaxoBrokerage
             }
 
             return null;
-        }
+        }*/
 
         return GetSaxoHistory(request);
     }
@@ -97,6 +106,7 @@ public partial class SaxoBrokerage
     private IEnumerable<BaseData> GetSaxoHistory(HistoryRequest request)
     {
         var brokerageSymbol = _symbolMapper.GetBrokerageSymbol(request.Symbol);
+        var assetType = SaxoSymbolMapper.ConvertSecurityTypeToSaxoAssetType(request.Symbol.SecurityType);
 
         var brokerageUnitTime = request.Resolution switch
         {
@@ -108,9 +118,18 @@ public partial class SaxoBrokerage
 
         var period = request.Resolution.ToTimeSpan();
 
-        foreach (var bar in _saxoAPIClient.GetBars(SaxoAssetType.Stock, brokerageSymbol.ToInt32(), brokerageUnitTime, request.StartTimeUtc, request.EndTimeUtc).ToEnumerable())
+        foreach (var bar in _saxoAPIClient.GetBars(assetType, brokerageSymbol.ToInt32(), brokerageUnitTime, request.StartTimeUtc, request.EndTimeUtc).ToEnumerable())
         {
-            var tradeBar = new TradeBar(bar.Time.ConvertFromUtc(request.ExchangeHours.TimeZone), request.Symbol, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, period);
+            TradeBar tradeBar;
+
+            if (assetType.Any(n => n == SaxoAssetType.FxSpot))
+            {
+                tradeBar = new TradeBar(bar.Time.ConvertFromUtc(request.ExchangeHours.TimeZone), request.Symbol, bar.OpenBid, bar.HighBid, bar.LowBid, bar.CloseBid, bar.Volume, period);
+            }
+            else
+            {
+                tradeBar = new TradeBar(bar.Time.ConvertFromUtc(request.ExchangeHours.TimeZone), request.Symbol, bar.Open, bar.High, bar.Low, bar.Close, bar.Volume, period);
+            }
 
             if (request.ExchangeHours.IsOpen(tradeBar.Time, tradeBar.EndTime, request.IncludeExtendedMarketHours))
             {

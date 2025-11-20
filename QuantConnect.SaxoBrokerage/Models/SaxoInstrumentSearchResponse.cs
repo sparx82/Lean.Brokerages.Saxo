@@ -86,6 +86,11 @@ public struct SummaryInfo
     public int GroupId { get; }
 
     /// <summary>
+    /// The GroupOptionRootId value is used to get the option root instruments for a given underlying instrument.
+    /// </summary>
+    public int GroupOptionRootId { get; }
+
+    /// <summary>
     /// Uniquely identifies the instrument (Uic) or the option root (ContractOptionRootId).
     /// </summary>
     public long Identifier { get; }
@@ -131,7 +136,7 @@ public struct SummaryInfo
     public SaxoAssetType UnderlyingAssetType { get; }
 
     [JsonConstructor]
-    public SummaryInfo(SaxoAssetType assetType, string currencyCode, string description, string exchangeId, string exchangeName, int groupId, long identifier, bool isKeywordMatch,
+    public SummaryInfo(SaxoAssetType assetType, string currencyCode, string description, string exchangeId, string exchangeName, int groupId, int groupOptionRootId, long identifier, bool isKeywordMatch,
         string issuerCountry, string nonTradableReason, long primaryListing, string summaryType, string symbol, SaxoAssetType[] tradableAs, SaxoAssetType underlyingAssetType)
     {
         AssetType = assetType;
@@ -140,6 +145,7 @@ public struct SummaryInfo
         ExchangeId = exchangeId;
         ExchangeName = exchangeName;
         GroupId = groupId;
+        GroupOptionRootId = groupOptionRootId;
         Identifier = identifier;
         IsKeywordMatch = isKeywordMatch;
         IssuerCountry = issuerCountry;

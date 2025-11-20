@@ -1,3 +1,6 @@
 {
-  "data-folder": "../../../../Lean/Data/"
+  "data-folder": "../../../../Lean/Data/",
+  "saxo-client-id": "9e83e75f557d49c7aba1edff20c20f80",
+  "saxo-redirect-url": "http://localhost",
+  "saxo-api-url": "https://gateway.saxobank.com/sim/openapi",
 }

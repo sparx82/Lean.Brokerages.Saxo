@@ -13,14 +13,16 @@
  * limitations under the License.
 */
 
-using System;
-using System.IO;
 using NUnit.Framework;
-using System.Collections;
-using QuantConnect.Logging;
 using QuantConnect.Configuration;
+using QuantConnect.Logging;
+using QuantConnect.Securities;
+using System;
+using System.Collections;
+using System.IO;
+using System.Linq;
 
-namespace QuantConnect.Brokerages.Template.Tests
+namespace QuantConnect.Brokerages.Saxo.Tests
 {
     [TestFixture]
     public class TestSetup
@@ -28,6 +30,15 @@ namespace QuantConnect.Brokerages.Template.Tests
         [Test, TestCaseSource(nameof(TestParameters))]
         public void TestSetupCase()
         {
+        }
+
+        public static SaxoBrokerageTest CreateBrokerage(IOrderProvider orderProvider, ISecurityProvider securityProvider)
+        {
+            var clientId = Config.Get("saxo-client-id");
+            var redirectUrl = Config.Get("saxo-redirect-url");
+            var restApiUrl = Config.Get("saxo-api-url");
+
+            return new SaxoBrokerageTest(clientId, restApiUrl, redirectUrl);
         }
 
         public static void ReloadConfiguration()

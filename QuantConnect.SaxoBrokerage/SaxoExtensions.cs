@@ -1,4 +1,5 @@
-﻿using System;
+﻿using QuantConnect.Brokerages.Saxo.Models.Enums;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,6 +10,20 @@ namespace QuantConnect.Brokerages.Saxo;
 
 public static class SaxoExtensions
 {
+    public static SecurityType ConvertAssetTypeToSecurityType(this SaxoAssetType assetType) => assetType switch
+    {
+        SaxoAssetType.Stock => SecurityType.Equity,
+        SaxoAssetType.StockOption => SecurityType.Option,
+        SaxoAssetType.ContractFutures => SecurityType.Future,
+        SaxoAssetType.FuturesOption => SecurityType.FutureOption,
+        SaxoAssetType.FxForwards => SecurityType.Forex,
+        SaxoAssetType.StockIndex => SecurityType.Index,
+        SaxoAssetType.StockIndexOption => SecurityType.IndexOption,
+        _ => throw new NotSupportedException($"{nameof(SaxoBrokerage)}.{nameof(ConvertAssetTypeToSecurityType)}: " +
+            $"The AssetType '{assetType}' is not supported.")
+    };
+
+
     public static IEnumerable<T> ToEnumerable<T>(this IAsyncEnumerable<T> source, CancellationToken cancellationToken = default)
     {
         IAsyncEnumerator<T> e = source.GetAsyncEnumerator(cancellationToken);

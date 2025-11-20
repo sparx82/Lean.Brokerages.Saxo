@@ -13,12 +13,13 @@
  * limitations under the License.
 */
 
-using System;
-using QuantConnect.Packets;
-using QuantConnect.Configuration;
 using QuantConnect.Brokerages;
+using QuantConnect.Configuration;
 using QuantConnect.Interfaces;
+using QuantConnect.Packets;
 using QuantConnect.Securities;
+using QuantConnect.Util;
+using System;
 using System.Collections.Generic;
 
 namespace QuantConnect.Brokerages.Saxo;
@@ -85,6 +86,8 @@ public class SaxoBrokerageFactory : BrokerageFactory
         // Case 1: authentication with using redirectUrl, authorizationCode
         brokerage = new SaxoBrokerage(clientId, apiUrl, redirectUrl);
 
+        Composer.Instance.AddPart<IDataQueueHandler>(brokerage);
+
         return brokerage;
     }
 
@@ -93,6 +96,6 @@ public class SaxoBrokerageFactory : BrokerageFactory
     /// </summary>
     public override void Dispose()
     {
-        throw new NotImplementedException();
+        //Not needed
     }
 }

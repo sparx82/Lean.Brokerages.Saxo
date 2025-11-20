@@ -41,7 +41,7 @@ public class SaxoSymbolMapper : ISymbolMapper
 
     private readonly SaxoAPIClient _apiClient;
 
-    public readonly HashSet<SecurityType> SupportedSecurityType = new() { SecurityType.Equity, SecurityType.Option, SecurityType.Future, SecurityType.Index, SecurityType.IndexOption };
+    public readonly HashSet<SecurityType> SupportedSecurityType = new() { SecurityType.Equity, SecurityType.Option, SecurityType.Future, SecurityType.Index, SecurityType.IndexOption, SecurityType.Forex };
 
     public SaxoSymbolMapper(SaxoAPIClient apiClient)
     {
@@ -64,38 +64,104 @@ public class SaxoSymbolMapper : ISymbolMapper
 
         // Map QC SecurityType to Saxo AssetType
         var saxoAssetType = ConvertSecurityTypeToSaxoAssetType(symbol.SecurityType);
-        if (saxoAssetType == SaxoAssetType.Unknown)
+        if (saxoAssetType.Any(n => n == SaxoAssetType.Unknown))
         {
             throw new ArgumentException($"SaxoBrokerageSymbolMapper: Unhandled security type: {symbol.SecurityType}");
         }
 
-        // Use the QC ticker (e.g., "AAPL") as the keyword for the Saxo API search
-        var keywords = symbol.Value;
+        string keywords = "";
 
         try
         {
-            // Synchronously wait for the async task.
-            // This is common in QC mappers as the interface is not async.
-            SaxoInstrumentSearchResponse searchResponse = _apiClient.SearchInstrumentsAsync(saxoAssetType, keywords).Result;
+            SummaryInfo instrument;
 
-            var instrument = searchResponse.Data?.FirstOrDefault(d =>
-                d.Symbol.Equals(keywords, StringComparison.OrdinalIgnoreCase) &&
-                d.AssetType.Equals(saxoAssetType));
-
-            if (instrument == null)
+            if (saxoAssetType.Any(n => n == (SaxoAssetType.Stock) || n == (SaxoAssetType.Etf)))
             {
-                // Fallback: try to find the first valid instrument if exact match fails
-                instrument = searchResponse.Data?.FirstOrDefault(d => d.Identifier > 0);
+                keywords = symbol.Value;
 
-                if (instrument == null)
-                {
-                    throw new Exception($"No instrument found for keywords: {keywords} and AssetType: {saxoAssetType}");
-                }
+                // Synchronously wait for the async task.
+                // This is common in QC mappers as the interface is not async.
+                SaxoInstrumentSearchResponse searchResponse = _apiClient.SearchInstrumentsAsync(saxoAssetType, keywords).Result;
 
-                Log.Error($"SaxoBrokerageSymbolMapper.GetBrokerageSymbol(): Exact match not found for {keywords}. Using first result: {instrument?.Description} (Uic: {instrument?.Identifier})");
+                instrument = searchResponse.Data.FirstOrDefault(d =>
+                    d.Symbol.Equals(keywords, StringComparison.OrdinalIgnoreCase) &&
+                    saxoAssetType.Contains(d.AssetType));
+
+                brokerageSymbol = instrument.Identifier.ToString();
+            }
+            else if (saxoAssetType.Any(n => n == SaxoAssetType.StockOption))
+            {
+                keywords = symbol.Underlying.Value;
+
+                //Get the option root id of the underlying instrument first
+                SaxoInstrumentSearchResponse searchResponse = _apiClient.SearchInstrumentsAsync(saxoAssetType, keywords).Result;
+
+                var underlying = searchResponse.Data.FirstOrDefault(d =>
+                    d.Symbol.Equals(keywords, StringComparison.OrdinalIgnoreCase) &&
+                    saxoAssetType.Contains(d.AssetType));
+
+                var contractRootID = underlying.GroupOptionRootId;
+
+                //Now get the option instrument using the underlying UIC
+                SaxoContractOptionSpaceSearchResponse optionSearchResponse = _apiClient.SearchOptionRootSpace(contractRootID).Result;
+
+                var options = optionSearchResponse.OptionSpace.First(d =>
+                    d.Expiry.Year.Equals(symbol.ID.Date.Year) &&
+                    d.Expiry.Month.Equals(symbol.ID.Date.Month) &&
+                    d.Expiry.Day.Equals(symbol.ID.Date.Day));
+
+                var option = options.SpecificOptions.First(d =>
+                    d.StrikePrice.Equals(symbol.ID.StrikePrice) &&
+                    d.PutCall.Equals(symbol.ID.OptionRight == OptionRight.Call ? "Call" : "Put"));
+
+                brokerageSymbol = option.Uic.ToString();
+            }
+            else if (saxoAssetType.Any(n => n == SaxoAssetType.ContractFutures))
+            {
+                keywords = symbol.ID.Symbol;
+
+                // Synchronously wait for the async task.
+                // This is common in QC mappers as the interface is not async.
+                SaxoInstrumentSearchResponse searchResponse = _apiClient.SearchInstrumentsAsync(saxoAssetType, keywords).Result;
+
+                instrument = searchResponse.Data.FirstOrDefault(d =>
+                    d.Symbol.Equals(keywords, StringComparison.OrdinalIgnoreCase) &&
+                    saxoAssetType.Contains(d.AssetType));
+
+                brokerageSymbol = instrument.Identifier.ToString();
+            }
+            else if (saxoAssetType.Any(n => n == SaxoAssetType.FxSpot))
+            {
+                keywords = symbol.Value;
+
+                // Synchronously wait for the async task.
+                // This is common in QC mappers as the interface is not async.
+                SaxoInstrumentSearchResponse searchResponse = _apiClient.SearchInstrumentsAsync(saxoAssetType, keywords).Result;
+                instrument = searchResponse.Data.FirstOrDefault(d =>
+                    d.Symbol.Equals(keywords, StringComparison.OrdinalIgnoreCase) &&
+                    saxoAssetType.Contains(d.AssetType));
+
+                brokerageSymbol = instrument.Identifier.ToString();
+            }
+            else
+            {
+                keywords = symbol.Value;
+
+                // Synchronously wait for the async task.
+                // This is common in QC mappers as the interface is not async.
+                SaxoInstrumentSearchResponse searchResponse = _apiClient.SearchInstrumentsAsync(saxoAssetType, keywords).Result;
+                instrument = searchResponse.Data.FirstOrDefault(d =>
+                    d.Symbol.Equals(keywords, StringComparison.OrdinalIgnoreCase) &&
+                    saxoAssetType.Contains(d.AssetType));
+
+                brokerageSymbol = instrument.Identifier.ToString();
             }
 
-            brokerageSymbol = instrument?.Identifier.ToString();
+            /*if (instrument == null)
+            {
+               throw new Exception($"No instrument found for keywords: {keywords} and AssetType: {saxoAssetType}");
+            }*/
+
             Log.Trace($"SaxoBrokerageSymbolMapper.GetBrokerageSymbol(): Mapped QC Symbol {symbol} to Saxo Uic {brokerageSymbol}");
 
             // Add to both caches for two-way mapping
@@ -108,6 +174,48 @@ public class SaxoSymbolMapper : ISymbolMapper
         {
             Log.Error(e, $"SaxoBrokerageSymbolMapper.GetBrokerageSymbol(): Failed to map symbol {symbol}");
             throw;
+        }
+    }
+
+    public bool TryGetLeanSymbol(string brokerageSymbol, SaxoAssetType saxoAssetType, DateTime expirationDateTime, out Symbol leanSymbol)
+    {
+        if (_brokerageToSymbol.TryGetValue(brokerageSymbol, out leanSymbol))
+        {
+            return true;
+        }
+
+        try
+        {
+            var ticker = brokerageSymbol;
+            var optionRight = default(OptionRight);
+            var strikePrice = default(decimal);
+            switch (saxoAssetType)
+            {
+                //case SaxoAssetType.StockOption:
+                //    (ticker, optionRight, strikePrice) = ParsePositionOptionSymbol(brokerageSymbol);
+                //    break;
+                //case SaxoAssetType.IndexOption:
+                //    (ticker, optionRight, strikePrice) = ParsePositionOptionSymbol(brokerageSymbol);
+                //    ticker = ConvertIndexBrokerageTickerInLeanTicker(ticker);
+                //    break;
+                case SaxoAssetType.ContractFutures:
+                    ticker = SymbolRepresentation.ParseFutureTicker(brokerageSymbol).Underlying;
+                    break;
+                //case SaxoAssetType.Index:
+                //    ticker = ConvertIndexBrokerageTickerInLeanTicker(ticker);
+                //    break;
+            }
+
+            leanSymbol = GetLeanSymbol(ticker, saxoAssetType.ConvertAssetTypeToSecurityType(), expirationDate: expirationDateTime, strike: strikePrice, optionRight: optionRight);
+
+            _brokerageToSymbol[brokerageSymbol] = leanSymbol;
+
+            return true;
+        }
+        catch
+        {
+            leanSymbol = default;
+            return false;
         }
     }
 
@@ -136,7 +244,7 @@ public class SaxoSymbolMapper : ISymbolMapper
         }
 
         var saxoAssetType = ConvertSecurityTypeToSaxoAssetType(securityType);
-        if (saxoAssetType == SaxoAssetType.Unknown)
+        if (saxoAssetType.Any(n => n == SaxoAssetType.Unknown))
         {
             throw new ArgumentException($"SaxoBrokerageSymbolMapper: Unhandled security type: {securityType}");
         }
@@ -180,28 +288,28 @@ public class SaxoSymbolMapper : ISymbolMapper
     /// <summary>
     /// Converts a QuantConnect SecurityType to a Saxo AssetType string.
     /// </summary>
-    public static SaxoAssetType ConvertSecurityTypeToSaxoAssetType(SecurityType securityType)
+    public static SaxoAssetType[] ConvertSecurityTypeToSaxoAssetType(SecurityType securityType)
     {
         switch (securityType)
         {
             case SecurityType.Equity:
-                return SaxoAssetType.Stock;
+                return [SaxoAssetType.Stock, SaxoAssetType.Etf];
             case SecurityType.Forex:
-                return SaxoAssetType.FxSpot;
+                return [SaxoAssetType.FxSpot];
             case SecurityType.Cfd:
-                return SaxoAssetType.CfdOnStock; // Or CfdOnIndex, CfdOnFutures, etc. Defaulting to Stock.
+                return [SaxoAssetType.CfdOnStock]; // Or CfdOnIndex, CfdOnFutures, etc. Defaulting to Stock.
             case SecurityType.Future:
-                return SaxoAssetType.ContractFutures;
+                return [SaxoAssetType.ContractFutures];
             case SecurityType.Option:
-                return SaxoAssetType.StockOption; // Or FuturesOption
+                return [SaxoAssetType.StockOption]; // Or FuturesOption
             case SecurityType.Index:
-                return SaxoAssetType.StockIndex;
+                return [SaxoAssetType.StockIndex];
             case SecurityType.IndexOption:
-                return SaxoAssetType.StockIndexOption;
+                return [SaxoAssetType.StockIndexOption];
             // Add more mappings as needed
             default:
                 Log.Error($"SaxoBrokerageSymbolMapper.ConvertSecurityType: Unhandled SecurityType: {securityType}");
-                return SaxoAssetType.Unknown;
+                return [SaxoAssetType.Unknown];
         }
     }
 
